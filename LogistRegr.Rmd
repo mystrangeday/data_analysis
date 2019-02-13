@@ -1,0 +1,279 @@
+---
+title: "Logistic Regression"
+author: "Anasatasia Masalova"
+date: "04 02 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+```
+
+```{r}
+
+#install.packages("tidyverse")
+#install.packages("sjPlot")
+#install.packages("pander")
+#install.packages("pROC")
+#install.packages("car")
+
+library(haven)
+library(car)
+library(pROC)
+library(pander)
+library(sjPlot)
+library(psych)
+library(pscl)
+library(margins)
+library(generalhoslem)
+library(caret)
+```
+
+```{r}
+df <- read_spss("ESS6RU.sav")
+df1 <- df[, c(60, 163, 278, 302, 358:359, 365:368, 418:423)] 
+df.my<-df1[,c(1,2,4,10)]
+library(tidyverse)
+df.my %>% map_chr(~attributes(.)$label)
+```
+
+Data preparation 
+
+```{r}
+df.my$clsprty <- str_replace(df.my$clsprty, "2", "0")
+df.my$clsprty <- factor(df.my$clsprty)
+df.my$agea <- as.integer(df.my$agea)
+df.my$rlgdgr <- as.integer(df.my$rlgdgr)
+
+df.my$eisced <- factor(df.my$eisced)
+df.my$eisced <- str_replace(df.my$eisced, "6", "7") #recod 6 (that means Bachelor degree) to 7 (that means MA or higher degree), because 6 has not so many observations. Despite their number is bigger than 5, I suppose, that it can make sense, because in Russia bachelor degree became popular not so many time ago, so not so many respondents can have it. 
+
+
+df.my$eisced = ifelse(df.my$eisced == 4, 3, df.my$eisced)
+df.my$eisced = ifelse(df.my$eisced == 5, 4, df.my$eisced)
+df.my$eisced = ifelse(df.my$eisced == 7, 5, df.my$eisced)
+
+xtabs(~ clsprty + eisced, data = df.my)
+
+df.my<-na.omit(df.my)
+
+```
+<font size="5"> 1) the research question </font> 
+
+Can age, religiosity and level of education predict whether or not person has closeness to particular political party? 
+
+<font size="5"> 2) model equation </font> 
+
+log[p(Feel closer to a particular party)/p(1-Feel closer to a particular party)] = b0 + b1*Age + b2*Religiosity + b3*Level_of_education 
+
+<font size="5"> 3) scale types </font> 
+
+Dependent:
+**clsprty (nominal, binary)**
+"Есть ли такая политическая партия, которая Вам ближе, чем все остальные партии?
+(1) Да
+(2) Нет"
+
+*** Here it will be:
+(1) Yes
+(0) No
+
+Independent:
+**agea (numeric)** - Age of respondent 
+
+**rlgdgr (percepted as numeric here, but in fact can be ordinal too)** - Level of religiosity of respondent.
+How religious are you?
+(0) Not at all religious 
+(10) Very religious
+
+**eisced (ordinal)** - Highest level of education 
+(1) less than lower secondary 
+(2) lower secondary
+(3) upper tier upper secondary
+(4) advanced vocational, sub-degree 
+(5) BA level + >= MA level 
+
+
+Descriptive statistics for the variables
+
+```{r}
+describe(df.my)
+
+#45% of all respondents have preference on one particular political party  
+#mean age of respondents is 45.85 years (minimum is 15 years and maximum is 90 years)
+#distribution of age variable is slightly skewed to the right (skew=0.19)
+
+```
+
+<font size="5"> 4) model summary </font> 
+
+```{r}
+mylogit_mod1 <- glm(clsprty ~ agea + rlgdgr + eisced , data = df.my, family = "binomial")
+summary(mylogit_mod1)
+```
+
+And summary in the table
+
+```{r}
+pander(summary(mylogit_mod1))
+```
+
+Anova for model comparison
+
+```{r}
+anova(mylogit_mod1, test="Chisq")
+
+#model with all 3 predictors is better than model with 0, 1 or 2 predictors
+```
+
+<font size="5"> 5) odds ratios with confidence intervals and predicted probabilities or marginal effects </font> 
+
+```{r}
+exp(cbind(OR = coef(mylogit_mod1), confint(mylogit_mod1)))
+
+```
+
+Table with odds ratios and CI 
+
+```{r}
+tab_model(mylogit_mod1)
+```
+
+Predicted probabilities
+
+```{r}
+
+newdata <- with(df.my, data.frame(agea = mean(agea), 
+                        rlgdgr = mean(rlgdgr), 
+                        eisced = factor(1:5)))
+
+newdata$eiscedP <- predict(mylogit_mod1, newdata = newdata, type = "response")
+
+newdata
+
+#PP increases with increasing of respondent's level of education 
+```
+
+
+```{r}
+newdata2 <- with(df.my, data.frame(agea = rep(seq(from = 15, to = 90, length.out = 100), 5), rlgdgr = mean(rlgdgr), eisced = factor(rep(1:5, each = 100))))
+newdata3 <- cbind(newdata2, predict(mylogit_mod1, newdata = newdata2, type = "link", se = T))
+
+newdata3 <- within(newdata3, {
+  PredictedProb <- plogis(fit)
+  LL <- plogis(fit - (1.96 * se.fit))
+  UL <- plogis(fit + (1.96 * se.fit))
+})
+head(newdata3)
+
+```
+
+Plot 
+
+```{r}
+
+ggplot(newdata3, aes(x = agea, y = PredictedProb)) +
+  geom_ribbon(aes(ymin = LL, ymax = UL, fill = eisced), alpha = 0.2)+
+  geom_line(aes(colour = eisced), size = 0.75) +
+   ylim(0, 1)
+
+#The plot shows that predicted probability of being close to particular party increases with age. However, people with less than lower secondary level of education has the lowest probability comparing to other levels of education, which are pretty similar
+```
+
+<font size="5"> 6) interpretation of all direct effects </font> 
+
+1. Relogiosity 
+For every one unit increase of religiosity the log odds of being close to particular party increase by 0.063487 (p=6.80e-05, significant). Or (in odds terms) for one unit increase in religiosity odds of being close to particular party change by factor of 1.07 or increase by 7%.
+
+2. Age
+For every one unit increase in the age of respondent the log odds of being close to particular party increase by 0.025379 (p< 2e-16, significant). Or (in odds terms) for one unit increase in age of respondent odds of being close to particular party change by factor of 1.03 or increase by 3%. 
+
+3. Level of education
+*Less than lower secondary VS lower secondary*
+People with lower secondary education in comparing with people, who have less than lower secondary education, have their log odds of being close to particular party icrease by 0.712795 (p=0.017826, significant), their odds of being close to particular party change by factor of 2.04 or increase by 104%. 
+
+*Less than lower secondary VS upper tier upper secondary*
+People with upper tier of upper secondary education in comparing with people, who have less than lower secondary education, have their log odds of being close to particular party icrease by 0.864697 (p=0.001983, significant), their odds of being close to particular party change by factor of 2.37 or increase by 137%. 
+
+*Less than lower secondary VS advanced vocational, sub-degree* 
+People with advanced vocational and sub-degree education in comparing with people, who have less than lower secondary education, have their log odds of being close to particular party icrease by 0.875421 (p=0.001983, significant), their odds of being close to particular party change by factor of 2.4 or increase by 140%. 
+
+*Less than lower secondary VS BA level + >= MA level* 
+People with BA level or >= MA level of education in comparing with people, who have less than lower secondary education, have their log odds of being close to particular party icrease by 0.959025 (p=0.000494, significant), their odds of being close to particular party change by factor of 2.61 or increase by 161%. 
+
+
+Marginal effects
+
+```{r}
+m<- margins(mylogit_mod1, type = "response")
+margins(mylogit_mod1, type = "response") 
+plot(m)
+
+#It seems like plot is wrong again, so I will look at numbers 
+#Marginal effects for the highest level of education of 0.2071, it shows that person, who has BA or MA degree and his religiosity and age are average, the predicted probability of being close to the particular party is 0.2071 greater than for person who have less than lower secondary education
+```
+
+<font size="5"> 7) overall goodness of fit measures </font> 
+
+```{r}
+#Pseudo R-squared 
+
+pR2(mylogit_mod1)
+
+#McFadden R-squared much lower than 0.2, so the model is not so good. By the way, -2LL is close to zero and lower than LLhNull, so it is not so bad
+```
+
+```{r}
+#Hosmer-Lemeshow Test
+
+logitgof(df.my$clsprty, fitted(mylogit_mod1), g = 10)
+
+#p-value > 0.05, so model fits the observed data well 
+```
+
+<font size="5"> 8) classification accuracy (hit ratio) </font> 
+
+```{r}
+set.seed(42) 
+bound <- floor((nrow(df.my)/10) * 5)  #define 50% of training and test set 
+df.bound <- df.my[sample(nrow(df.my)), ]  #sample rows 
+df.train <- df.bound[1:bound, ]  #get training set
+df.test <- df.bound[(bound + 1):nrow(df.bound), ]  #get test set
+df.test <- na.omit(df.test)
+df.train <- na.omit(df.train)
+
+
+mylogit.ml <- glm(clsprty ~ agea + rlgdgr + eisced, data = df.train, family = "binomial",na.action=na.omit)
+
+
+pred = format(round(predict(mylogit.ml, newdata=df.test, type="response")))
+pred.fact<-as.factor(pred)
+caret::confusionMatrix(data=pred.fact,df.test$clsprty)
+
+#Accuracy is 0.61, it is pretty well for social sciences. Moreover p-value [Acc > NIR] = 3.782e-05, so my model is better than no model 
+```
+
+<font size="5"> 9) diagnostics (linearity and multicollinearity checks) </font> 
+
+```{r}
+#multicollinearity
+vif(mylogit_mod1)
+
+#GVIF ~ 1 for all predictors, so there is no multicollinearity 
+```
+
+```{r}
+#linearity 
+car::residualPlots(mylogit_mod1)
+
+#pink lines shows linear relations, because they are almost straight 
+```
+
+<font size="5"> 10) conclusion </font> 
+
+In this work I checked whether or not age, religiosity and level of education have influence on being close to the particular political party. All predictors were significant, so they have infuence on outcome variable. 
+Despite my model has not very good fit and accuracy, I find the mixture of predictors and all of them were significant (I tried other options and they were worse). 
+Short results:
+- Increase in age increases the odds of being close to particular party
+- Level of education and its increasing positively influences on outcome
+- More religious people are likely to have favourite party 
