@@ -1,0 +1,280 @@
+---
+title: "Cluster analysis project2"
+author: "Anasatasia Masalova"
+date: "07 03 2019"
+output: 
+  html_document:
+    theme: cosmo
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+```
+
+```{r}
+#install.packages("clValid")
+#install.packages("factoextra")
+library(ggplot2) 
+library(lattice) 
+library(stats) 
+library(cluster) 
+library(dplyr)
+library("factoextra")
+library(ggbiplot)
+library(dendextend)
+library(fpc)
+library(clValid)
+library(haven)
+library(psych)
+
+ESS7GB <- read_sav("ESS7GB.sav")
+
+uk<-subset(ESS7GB, ESS7GB$cntry=="GB")
+
+uk<-uk[,c("psppipl","ptcpplt","lrscale","euftf","stfeco","stfgov","stfdem","stfedu","stfhlth")]
+
+```
+
+```{r}
+uk<-na.omit(uk)
+```
+
+## A couple words about variables
+
+I decided to use variables about political preferences, opinions about politicians, political system in UK and level of satisfaction of some social issues in the country. 
+It seems to me, that citizens of UK will have differen views on governmental policy and state of some features in country, so population can be divided on some clusters. Also people with different levels of trust in political system and level of satisfaction of health and education state will have different opinions about the process of European unification, which can be very essential when we speak about Brexit. 
+
+I used 9 variables:
+
+* **psppipl** (numeric)
+How much would you say that the political system in
+Britain allows people like you to have an influence on politics?
+0 - not at all
+10 - completely 
+
+* **ptcpplt** (numeric)
+How much would you say that politicians care what people like you think?
+0 - not at all
+10 - completely 
+
+* **lrscale** (numeric)
+In politics people sometimes talk of “left” and “right”.
+Where would you place yourself on this scale?
+0 - left
+10 - right
+
+* **euftf** (numeric)
+Some say European unification should go further. Others say it has already gone too far. What number on the scale best describes your position?
+0 - unification has already gone too far
+10 - unification should go further
+
+* **stfeco** (numeric)
+On the whole how satisfied are you with the present state of the economy in Britain?
+0 - extremely dissatisfied
+10 - extremely satisfied
+
+* **stfgov** (numeric)
+Now thinking about the British government, how satisfied are you with the way it is doing its job? 
+0 - extremely dissatisfied
+10 - extremely satisfied
+
+* **stfdem** (numeric)
+And on the whole, how satisfied are you with the way democracy works in Britain?
+0 - extremely dissatisfied
+10 - extremely satisfied
+
+* **stfedu** (numeric)
+Please say what you think overall about the state of education in Britain nowadays?
+0 - extremely bad
+10 - extremely good
+
+* **stfhlth** (numeric)
+Please say what you think overall about the state of health services in Britain nowadays?
+0 - extremely bad
+10 - extremely good
+
+```{r}
+describe(uk)
+summary(uk$lrscale)
+```
+
+## Data description
+
+Describing sample of UK population generally have these characteristics:
+
+* they are not really confident in their ability to influence on political decisions and also think, that politicianы don't listent to people's opinion (mean for 'psppipl' is 3.55 out of 10, median = 3; mean for 'ptcpplt' is 3.61, median = 3 )
+
+* on the scale of left and right individuals in the sample are situated in the middle (mean for 'lrscale' is 5.04, median = 5, moreover range from 1st to 3rd quartile is between 4 and 6)
+
+* sitizens are more satisfied in the state of education (mean = 5.63, median = 6) and health services (mean = 5.99, median = 6) in Britain, than state of the economy (mean = 4.73, median = 5) and the way democracy works (mean = 5.22, median = 5) in Britain 
+
+
+### Correlation check 
+
+```{r}
+cor(uk)
+```
+Correlation is less, than 0.7, so we can use these variables.
+Variables 'stfeco' and 'stfgov' are highly correlated, but I decided not to dump it. 
+
+## How much clusters do we need? 
+
+```{r}
+# Elbow method + partitioning function kmeans
+set.seed(42)
+fviz_nbclust(uk, kmeans, method = "wss") 
+   
+```
+Suggested number of clusters is 2
+
+```{r}
+#Silhouette method + partitioning function pam
+set.seed(42)
+fviz_nbclust(uk, pam, method = "silhouette") + theme_classic()
+```
+Suggested number of clusters is 2
+
+```{r}
+# Silhouette method + partitioning function kmeans
+set.seed(42)
+fviz_nbclust(uk, kmeans, method = "silhouette") 
+
+```
+Suggested number of clusters is 2
+
+
+## K-means clustering
+
+```{r}
+set.seed(42)
+clusters <- kmeans(uk, 2)
+clusters$cluster<-as.numeric(clusters$cluster)
+
+```
+
+## Visualization of K-means method
+
+```{r}
+
+fviz_cluster(clusters, data = uk, ellipse.type = "convex", palette = "jama", ggtheme = theme_minimal())
+
+
+plotcluster(uk, clusters$cluster)
+clusplot(uk, clusters$cluster, color=TRUE, shade=TRUE, 
+         labels=0.5, lines=0)
+```
+
+## Hierarchical clustering 
+
+### Distance - Euclidean 
+
+Because all my variables are numeric and have the same range  
+Also I chose Ward method for hierarchical clustering, because it delivers better results and image
+
+```{r}
+dist_mat <- dist(uk, metric = 'euclidean')
+dist_mat2<-daisy(uk, metric = 'gower')
+hclust_ward <- hclust(dist_mat, method = 'ward.D2')
+plot(hclust_ward)
+```
+
+Now we can make it more informative and colorful
+
+```{r}
+
+dend <- as.dendrogram(hclust_ward)
+dend_col <- color_branches(dend, k = 3)
+plot(dend_col)
+```
+
+```{r}
+dend_col2 <- color_branches(dend, k = 2)
+plot(dend_col2)
+```
+
+## Which method is better? 
+
+In my opinion, both methods delivered interpretable results (at least, I tried to interprete 2 and 3 clusters solutions and both have sense). BUT from my subjective point of view hierarchical method with 2-clusters solution delivers the most interpretable results compared to the rest of solutions. And I will tell you why and why do others worse (still subjective point of view and poor knowledge of UK political situation). 
+
+```{r}
+#adding all solutions to new dataframe
+cl <- cutree(hclust_ward, k = 3)
+cl2<-cutree(hclust_ward, k = 2)
+
+uk_cl <- mutate(uk, cluster_h = cl) 
+uk_cl <-mutate (uk_cl, cluster_h2 = cl2)
+uk_cl$cluster_h <- as.factor(uk_cl$cluster_h)
+uk_cl$cluster_h2 <- as.factor(uk_cl$cluster_h2)
+uk_cl$cluster_k <-as.factor(clusters$cluster)
+
+
+#describeBy(uk_cl, uk_cl$cluster_k)
+#describeBy(uk_cl, uk_cl$cluster_h)
+describeBy(uk_cl, uk_cl$cluster_h2) #this one is better for me
+```
+
+## Clusters description
+
+### Cluster 1 
+
+**Size:** 1323 people  
+**General description:** Think that state of health and education in country is above average; Satisfied with state of economy and way of democracy more than whole population in our sample. They are more likely assume that unification of Europe should go further.  
+As I understood from the Wikipedia, this people should be against Brexit, because they don't think that Europe unification and European Union's influence destroy the UK's economy and other spheres.  
+The maximum value of all variables here is 10. 
+
+### Cluster 2
+
+**Size:** 518 people  
+**General description:** Think that state of health and education in country is below average; Don't trust politicians and don't satisfied in how government and democracy work in country.   
+They are more likely assume that unification of Europe gone too far.   
+These people should be pro Bexit, because average level of their satisfaction of life in country is below than means of general sample. And they want to make Britain great again by exiting from EU.   
+The maximum value of satisfaction of governance and democracy is 7 and 8 respectively. 
+
+#### Comments about left/right scale and European unification
+
+It seems to me, that these two question can be somehow sensitive or just fall in the group of questions, where almost everyone chooses the ansver in the middle of scale. So, there is almost no difference between two clusters when speaking about left and right. And not really big difference of attitude to European unification (but it is! -> 4.10 vs 2.88 in means)
+
+#### Why other solutions are worst? 
+
+* 3-clusters solution from hierarchical clustering adds third cluster somewhere in the middle, so it has some features from both other clusters, I think it is not really good, but can be more sensitive for professional in political science. 
+* 2 - clusters solution from k-means also shows lower level of differetiation that 2-cluster solution from hierarchical method
+
+## Validation 
+
+I use PCA, because my variables are numeric
+
+```{r}
+uk.pca <- prcomp(uk, center = TRUE,scale. = TRUE)
+summary(uk.pca)
+
+#two components describe 54% of variance 
+```
+
+```{r}
+
+ggbiplot(uk.pca, ellipse=TRUE,obs.scale = 1, var.scale = 1,var.axes=T, groups = uk_cl$cluster_h2) + theme_minimal() 
+```
+
+Biplot shows, that clustering solution is not very good. All variables are better work for cluster 1.  
+However, normal data ellipse for each group match the shape of observation clouds (at least, a little). 
+
+```{r}
+# some validation measures
+uk1<-as.matrix(uk)
+clv<-clValid(uk1, 2, clMethods = "hierarchical", validation = "internal", maxitems = 2000)
+
+optimalScores(clv)
+```
+
+Connectivity [0; inf] should be minimized, but 5.8 is not so much in terms of infinity  
+Dunn [0; inf] should be maximized, so 0.23 is not good  
+Silhouette [-1; 1] should be closer to 1, 0.369 is closer to 1 than -1, but can be better. 
+
+
+## Conclusion 
+
+The aim of this work was to identify different groups inside the UK sitizens based on their thoughts about political and social issues.  
+As we can see, there are two clusters (the bigger one - AntiBrexit, the smaller one - ProBrexit). As we know from news, ProBrexit group wins, but it is normal situation (remember Trump and USA elections).  
+I guess, my choise of variables was not really succesfull, because clusters were close to each other, but it still shows, that there is differentiation by attitude to government and other stuff in UK. 
+Now I guess, it will bw interesting to try to build clusters based on sitizens' attitudes to migrants and migration policy, because it was important issue in the case of Brexit. 
+
